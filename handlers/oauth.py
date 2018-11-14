@@ -6,6 +6,7 @@ from tornado.auth import AuthError
 from handlers.base import BaseHandler
 from mixins import WexinOAuth2Mixin
 from models.users import User
+from settings import private_key
 
 
 class WeixinOAuth2LoginHandler(BaseHandler, WexinOAuth2Mixin):
@@ -41,7 +42,7 @@ class WeixinOAuth2LoginHandler(BaseHandler, WexinOAuth2Mixin):
                 "nickname": user.nickname,
                 "exp": datetime.utcnow()
             }
-            token = jwt.encode(payload, self.settings["secret_key"], algorithm='HS256')
+            token = jwt.encode(payload, private_key, algorithm='RS256')
             if user.nickname is not None:
                 ret["nickname"] = user.nickname
             else:

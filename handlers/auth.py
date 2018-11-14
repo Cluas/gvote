@@ -7,7 +7,7 @@ from forms.jwt import JWTTokenForm
 from forms.users import SmsCodeForm
 from handlers.base import BaseHandler
 from models.users import User
-from settings import redis
+from settings import redis, private_key
 from utils.async_yunpian import yunpian, generate_code
 
 
@@ -34,7 +34,7 @@ class JWTTokenHandler(BaseHandler):
                         "nickname": user.nickname,
                         "exp": datetime.utcnow()
                     }
-                    token = jwt.encode(payload, self.settings["secret_key"], algorithm='HS256')
+                    token = jwt.encode(payload, private_key, algorithm='RS256')
                     ret["id"] = user.id
                     if user.nick_name is not None:
                         ret["nickname"] = user.nickname
@@ -42,7 +42,7 @@ class JWTTokenHandler(BaseHandler):
                         ret["nickname"] = user.mobile
                         ret["token"] = token.decode("utf8")
 
-            except User.DoesNotExist as e:
+            except User.DoesNotExist:
                 self.set_status(400)
                 ret["mobile"] = "用户不存在"
 

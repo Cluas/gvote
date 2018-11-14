@@ -1,8 +1,9 @@
 import functools
+
 import jwt
 
-from exceptions import AuthenticationFailed
 from models.users import User
+from settings import public_key
 
 
 def async_authenticated(func):
@@ -16,8 +17,11 @@ def async_authenticated(func):
         if token:
             try:
                 token = token[1]
-                payload = jwt.decode(token, self.settings["secret_key"], leeway=self.settings["jwt_expire"],
-                                     options={"verify_exp": True})
+                payload = jwt.decode(token,
+                                     public_key,
+                                     leeway=self.settings["jwt_expire"],
+                                     options={"verify_exp": True},
+                                     algorithms=['RS256'])
                 user_id = payload["id"]
 
                 # 从数据库中获取到user并设置给_current_user
