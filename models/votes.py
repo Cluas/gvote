@@ -59,7 +59,7 @@ class Candidate(Model):
                 .over(order_by=[cls.number_of_votes.desc()])
                 - cls.number_of_votes)
         vote_rank = (fn.RANK().over(
-            order_by=[cls.number_of_votes.desc()])).alias('vote_rank')
+            order_by=[cls.number_of_votes.desc(), cls.create_time])).alias('vote_rank')
         query = cls.select(
             cls.id,
             cls.cover,
@@ -107,7 +107,7 @@ class VoteEvent(Model):
     @classmethod
     def get_vote_rank(cls, candidate_id, rank=5):
         vote_rank = (fn.RANK().over(
-            order_by=[fn.SUM(cls.reach)])).alias('vote_rank')
+            order_by=[fn.SUM(cls.reach), cls.voter_nickname])).alias('vote_rank')
         return cls.select(
             cls.voter_avatar,
             cls.voter_nickname,
