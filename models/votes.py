@@ -51,6 +51,7 @@ class Candidate(Model):
     number_of_votes = IntegerField(verbose_name='得票数', default=0)
     declaration = CharField(max_length=100, verbose_name='参赛宣言')
     user = ForeignKeyField(User, related_name='votes')
+    is_active = BooleanField(default=True, verbose_name="是否可用")
 
     @classmethod
     def query_candidates_by_vote_id(cls, vote_id):
@@ -68,7 +69,7 @@ class Candidate(Model):
             cls.declaration,
             fn.COALESCE(diff, 0).alias('diff'),
             vote_rank
-        ).join(User).where(cls.vote_id == vote_id)
+        ).join(User).where(cls.vote_id == vote_id, cls.is_active == True)
         return query
 
     @classmethod
@@ -96,6 +97,8 @@ class VoteEvent(Model):
     voter_nickname = CharField(max_length=20, default='', verbose_name="昵称")
     candidate = ForeignKeyField(Candidate)
     gift = ForeignKeyField(Gift, null=True)
+    is_gift = BooleanField(default=False, verbose_name="是否是礼物")
+    amount = FloatField(verbose_name='金额')
     image = CharField(max_length=200, verbose_name='礼物图片', default='')
     reach = IntegerField(verbose_name='抵用票数')
     number_of_gifts = IntegerField(verbose_name='礼物数量', default=0)

@@ -57,9 +57,8 @@ class CandidateListHandler(BaseHandler, PaginationMixin):
     """
     SUPPORTED_METHODS = ('GET', 'POST', 'OPTIONS')
 
-    async def get(self, *args, **kwargs):
+    async def get(self, vote_id, *args, **kwargs):
         ordering = self.get_argument("ordering", None)
-        vote_id = self.get_argument('vote_id')
         query = Candidate.query_candidates_by_vote_id(vote_id=vote_id)
         if ordering == '1':
             query = query.order_by(Candidate.create_time.desc())
@@ -90,14 +89,13 @@ class CandidateListHandler(BaseHandler, PaginationMixin):
         return ret
 
     @async_authenticated
-    async def post(self, *args, **kwargs):
+    async def post(self, vote_id, *args, **kwargs):
         param = self.request.body.decode("utf-8")
         data = json.loads(param)
         candidate_form = CandidateForm.from_json(data)
         if candidate_form.validate():
             user = self.current_user
             is_new = True if not user.mobile else False
-            vote_id = candidate_form.vote_id.data
             declaration = candidate_form.declaration.data
             images = candidate_form.images.data
 
@@ -142,12 +140,11 @@ class CandidateDetailHandler(BaseHandler):
     """
     SUPPORTED_METHODS = ('GET', 'OPTIONS')
 
-    async def get(self, pk, *args, **kwargs):
-        vote_id = self.get_argument('vote_id')
+    async def get(self, vote_id, candidate_id, *args, **kwargs):
         try:
             await objects.get(Vote, id=vote_id)
 
-            query = Candidate.query_candidates_by_vote_id(vote_id=vote_id).where(Candidate.id == pk)
+            query = Candidate.query_candidates_by_vote_id(vote_id=vote_id).where(Candidate.id == candidate_id)
             candidate = await objects.execute(query)
 
             candidate = candidate[0]
