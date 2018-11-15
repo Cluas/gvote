@@ -69,7 +69,7 @@ class Candidate(Model):
             cls.declaration,
             fn.COALESCE(diff, 0).alias('diff'),
             vote_rank
-        ).join(User).where(cls.vote_id == vote_id, cls.is_active == True)
+        ).join(User).where(cls.vote_id == vote_id, cls.is_active == 1)
         return query
 
     @classmethod
@@ -100,6 +100,7 @@ class VoteEvent(Model):
     is_gift = BooleanField(default=False, verbose_name="是否是礼物")
     amount = FloatField(verbose_name='金额')
     image = CharField(max_length=200, verbose_name='礼物图片', default='')
+    out_trade_no = CharField(max_length=200, verbose_name='交易单号', default='')
     reach = IntegerField(verbose_name='抵用票数')
     number_of_gifts = IntegerField(verbose_name='礼物数量', default=0)
 

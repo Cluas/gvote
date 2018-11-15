@@ -10,5 +10,4 @@ class CandidateForm(Form):
     code = StringField("验证码")
     name = StringField("姓名")
     declaration = StringField("参赛宣言", validators=[DataRequired(message="参赛宣言")])
-    vote_id = IntegerField("参赛投票", validators=[DataRequired(message="投票ID是必填的")])
     images = FieldList(StringField("参赛图片", validators=[DataRequired(message="请输入参赛图片列表")]))
