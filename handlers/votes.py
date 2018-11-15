@@ -3,7 +3,7 @@ import logging
 
 from datetime import date
 
-from exceptions import NotFoundError, IsVoteError, ErrorCode, DuplicateError
+from exceptions import NotFoundError, IsVoteError, ErrorCode, DuplicateError, DisableVoting
 from forms.votes import CandidateForm
 from handlers.base import BaseHandler
 from mixins import PaginationMixin
@@ -69,7 +69,7 @@ class CandidateListHandler(BaseHandler, PaginationMixin):
         page = self.get_paginate_query(query)
         if page is not None:
             query = page
-        candidates = objects.execute(query)
+        candidates = await objects.execute(query)
         ret = self.get_serializer_data(candidates)
         if page is not None:
             ret = self.get_paginated_response(ret)
@@ -193,7 +193,7 @@ class VoteEventListHandler(BaseHandler, PaginationMixin):
                 voter_nickname=vote_event.voter_nickname,
                 reach=vote_event.reach,
                 image=vote_event.image,
-                is_gift=True if vote_event.gift_id else False,
+                is_gift=vote_event.is_gift,
                 number_of_gifts=vote_event.number_of_gifts,
                 create_time=vote_event.create_time))
         return ret
@@ -240,10 +240,11 @@ class VotingHandler(BaseHandler):
     SUPPORTED_METHODS = ('POST', 'OPTIONS')
 
     @async_authenticated
-    async def post(self, *args, **kwargs):
-        candidate_id = self.get_json_argument('candidate_id')
-        candidate_id = candidate_id[0].decode()
+    async def post(self, candidate_id, *args, **kwargs):
+
         try:
+            if not self.current_user.can_vote:
+                raise DisableVoting
             async with objects.database.atomic_async():
                 candidate = await objects.get(Candidate, id=candidate_id)
                 key = f'vote_user_{self.current_user.id}_date_{date.today()}'
