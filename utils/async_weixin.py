@@ -2,6 +2,7 @@ import hashlib
 import random
 import string
 import time
+from datetime import datetime
 from random import choice
 
 try:
@@ -17,18 +18,6 @@ from settings import BASE_DIR
 
 FAIL = "FAIL"
 SUCCESS = "SUCCESS"
-
-
-def generate_code(digit=4):
-    """
-    生成随机digit位数字的验证码
-    :return:
-    """
-    seeds = "1234567890"
-    random_str = []
-    for i in range(digit):
-        random_str.append(choice(seeds))
-    return "".join(random_str)
 
 
 class WeixinPayError(Exception):
@@ -229,6 +218,26 @@ class AsyncWeixinPay:
 
         await self._fetch(url, data)
 
+    @property
+    def out_trade_no(self):
+        """
+        生成订单号
+        :return: 订单号
+        """
+        s = 'ABCDEFGHIJ'
+        date = datetime.now()
+        return (s[date.year - 2018]
+                +
+                hex(date.month).upper()
+                +
+                '{:0>2}'.format(str(date.day))
+                +
+                str(date.timestamp())[:5]
+                +
+                str(date.microsecond)[2:5]
+                +
+                '{:0>2}'.format(random.randint(0, 99)))
+
 
 async_weixin_pay = AsyncWeixinPay(app_id='wx45973a96444c3cf2',
                                   mch_id='1508958411',
@@ -248,7 +257,7 @@ if __name__ == "__main__":
     new_func = partial(async_weixin_pay.jsapi,
                        openid='oMijX1eTpn2tlA9txQ0qk0FhiLCA',
                        body='畅行一点通',
-                       out_trade_no='1212231231XDF',
+                       out_trade_no=async_weixin_pay.out_trade_no,
                        total_fee=1000,
                        attach='123')
     io_loop.run_sync(new_func)
