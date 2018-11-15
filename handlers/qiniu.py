@@ -11,9 +11,9 @@ class QiNiuTokenHandler(BaseHandler):
     """
     七牛上传token生成接口
     """
-    SUPPORTED_METHODS = ('POST', 'OPTIONS')
+    SUPPORTED_METHODS = ('GET', 'OPTIONS')
 
-    async def post(self, *args, **kwargs):
+    async def get(self, *args, **kwargs):
         access_key = 'cN9wdCMb2ruONntEiXmBTXKXtAWKAKzpeOeU54xT'
         secret_key = '-0IUfDbSznGmoNl0bD-ewC5fKx3gR_kBlyorBB3B'
         q = Auth(access_key, secret_key)
