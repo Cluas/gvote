@@ -47,3 +47,9 @@ class DuplicateError(APIException):
     status_code = 400
     default_detail = '不能重复报名'
     default_code = 'duplicate_error'
+
+
+class DisableVoting(APIException):
+    status_code = 400
+    default_detail = '您已经被禁止投票'
+    default_code = 'disable_voting'
