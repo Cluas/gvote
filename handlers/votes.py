@@ -27,14 +27,13 @@ class VoteDetailHandler(BaseHandler):
             await objects.get(Vote, id=pk)
             query = Vote.get_vote_info_by_pk(pk)
 
-            vote = await objects.execute(query)
+            vote = await objects.prefetch(query, VoteBanner.select())
 
             vote = vote[0]
             vote.views += 1
             await objects.execute(Vote.update(views=Vote.views + 1).where(Vote.id == pk))
 
-            banners = await objects.execute(VoteBanner.filter(vote_id=1))
-            banners = [{'url': banner.image} for banner in banners]
+            banners = [banner.image for banner in vote.banners]
             ret = dict(
                 banners=banners,
                 start_time=vote.start_time,
@@ -90,19 +89,22 @@ class CandidateListHandler(BaseHandler, PaginationMixin):
 
     @async_authenticated
     async def post(self, vote_id, *args, **kwargs):
+
         param = self.request.body.decode("utf-8")
         data = json.loads(param)
+
         candidate_form = CandidateForm.from_json(data)
         if candidate_form.validate():
+
             user = self.current_user
             is_new = True if not user.mobile else False
             declaration = candidate_form.declaration.data
             images = candidate_form.images.data
 
             async with objects.database.atomic_async():
+
                 try:
                     await objects.get(Vote, id=vote_id)
-                    # 新用户保存姓名跟手机号
                     if is_new:
                         mobile = candidate_form.mobile.data
                         code = candidate_form.code.data
@@ -112,9 +114,14 @@ class CandidateListHandler(BaseHandler, PaginationMixin):
                         user.mobile = mobile
                         user.name = candidate_form.name.data
                         await objects.update(user)
-                    await objects.get(Candidate, user=user, vote_id=vote_id)
+                    candidate = await objects.get(Candidate, user=user, vote_id=vote_id)
+
+                    if not candidate.is_active:
+                        raise DisableVoting("您已被禁止参加此次投票！")
                     raise DuplicateError
+
                 except Candidate.DoesNotExist:
+
                     count = await objects.count(Candidate.select().where(Candidate.vote_id == vote_id))
                     number = "%03d" % (count + 1)
                     candidate = await objects.create(Candidate,
@@ -124,13 +131,12 @@ class CandidateListHandler(BaseHandler, PaginationMixin):
                                                      number=number,
                                                      user=user)
                     for image in images:
-                        await objects.create(CandidateImage,
-                                             candidate=candidate,
-                                             url=image)
+                        await objects.create(CandidateImage, candidate=candidate, url=image)
 
                     self.finish({"candidate_id": candidate.id})
 
                 except Vote.DoesNotExist:
+
                     raise NotFoundError("投票不存在")
 
 
@@ -142,22 +148,24 @@ class CandidateDetailHandler(BaseHandler):
 
     async def get(self, vote_id, candidate_id, *args, **kwargs):
         try:
+
             await objects.get(Vote, id=vote_id)
 
             query = Candidate.query_candidates_by_vote_id(vote_id=vote_id).where(Candidate.id == candidate_id)
-            candidate = await objects.execute(query)
-
+            candidate = await objects.prefetch(query, CandidateImage.select())
             candidate = candidate[0]
-            images = await objects.execute(CandidateImage.select().where(CandidateImage.candidate_id == candidate.id))
+
             ret = dict(
                 name=candidate.user.name,
                 number=candidate.number,
-                images=[image.url for image in images],
+                images=[image.url for image in candidate.images],
                 declaration=candidate.declaration,
                 number_of_votes=candidate.number_of_votes,
                 diff=candidate.diff,
                 rank=candidate.vote_rank)
+
             self.finish(json.dumps(ret))
+
         except IndexError:
             raise NotFoundError("选手不存在")
         except Vote.DoesNotExist:
@@ -171,6 +179,7 @@ class VoteEventListHandler(BaseHandler, PaginationMixin):
     SUPPORTED_METHODS = ('GET', 'OPTIONS')
 
     async def get(self, candidate_id, *args, **kwargs):
+
         query = VoteEvent.select().where(VoteEvent.candidate_id == candidate_id)
         page = self.get_paginate_query(query)
         if page is not None:
@@ -203,19 +212,22 @@ class VoteRankListHandler(BaseHandler):
     SUPPORTED_METHODS = ('GET', 'OPTIONS')
 
     async def get(self, candidate_id, *args, **kwargs):
-        query = VoteEvent.get_vote_rank(candidate_id)
-        print(query.sql()[0])
-        ranks = await objects.execute(query)
+        try:
+            await objects.get(Candidate, id=candidate_id)
+            query = VoteEvent.get_vote_rank(candidate_id)
+            ranks = await objects.execute(query)
 
-        ret = []
-        for rank in ranks:
-            ret.append(dict(
-                voter_avatar=rank.voter_avatar,
-                voter_nickname=rank.voter_nickname,
-                number_of_votes=int(rank.number_of_votes),
-                vote_rank=rank.vote_rank
-            ))
-        self.finish(json.dumps(ret))
+            ret = []
+            for rank in ranks:
+                ret.append(dict(
+                    voter_avatar=rank.voter_avatar,
+                    voter_nickname=rank.voter_nickname,
+                    number_of_votes=int(rank.number_of_votes),
+                    vote_rank=rank.vote_rank
+                ))
+            self.finish(json.dumps(ret))
+        except Candidate.DoesNotExist:
+            raise NotFoundError("参赛选手未找到")
 
 
 class VoteRoleHandler(BaseHandler):
@@ -225,9 +237,12 @@ class VoteRoleHandler(BaseHandler):
     SUPPORTED_METHODS = ('GET', 'OPTIONS')
 
     async def get(self, pk, *args, **kwargs):
-        vote = await objects.get(Vote, id=pk)
+        try:
+            vote = await objects.get(Vote, id=pk)
 
-        self.finish({'detail': vote.rules})
+            self.finish({'detail': vote.rules})
+        except Vote.DoesNotExist:
+            raise NotFoundError("投票未找到")
 
 
 class VotingHandler(BaseHandler):
@@ -244,6 +259,8 @@ class VotingHandler(BaseHandler):
                 raise DisableVoting
             async with objects.database.atomic_async():
                 candidate = await objects.get(Candidate, id=candidate_id)
+                if self.current_user.id == candidate.user_id:
+                    raise DisableVoting("不能给自己投票")
                 key = f'vote_user_{self.current_user.id}_date_{date.today()}'
                 is_vote = redis.get(key)
                 if is_vote:
