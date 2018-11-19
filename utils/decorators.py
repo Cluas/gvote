@@ -44,3 +44,19 @@ def async_authenticated(func):
             )
 
     return wrapper
+
+
+def async_admin_required(func):
+    @functools.wraps(func)
+    async def wrapper(self, *args, **kwargs):
+        user = self._current_user
+        if user.is_staff:
+            await func(self, *args, **kwargs)
+        else:
+            self.set_status(403)
+            self.finish(
+                dict(
+                    err_code='admin_required', err_msg='请使用管理员权限账号访问'
+                )
+            )
+    return wrapper
