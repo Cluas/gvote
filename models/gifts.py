@@ -9,3 +9,4 @@ class Gift(Model):
     image = CharField(max_length=200, verbose_name='礼物图片')
     reach = IntegerField(verbose_name='抵用票数')
     price = FloatField(verbose_name='价格')
+    is_void = BooleanField(verbose_name='是否弃用', default=False)

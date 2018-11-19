@@ -18,6 +18,10 @@ class Vote(Model):
 
     @classmethod
     def get_vote_info_by_pk(cls, pk):
+        total_candidate = (fn
+                           .COALESCE(fn.COUNT(Candidate.id).filter(Candidate.is_active == 1), 0)
+                           .alias('number_of_candidates')
+                           )
         query = cls.select(
             cls.id,
             cls.announcement,
@@ -28,8 +32,34 @@ class Vote(Model):
             cls.cover,
             cls.views,
             fn.COALESCE(fn.SUM(Candidate.number_of_votes), 0).alias('number_of_votes'),
-            fn.COUNT(Candidate.id).alias('number_of_candidates'),
-        ).join(Candidate, join_type=JOIN_LEFT_OUTER).where(cls.id == pk)
+            total_candidate,
+        ).join(Candidate, join_type=JOIN.LEFT_OUTER).where(cls.id == pk)
+        return query
+
+    @classmethod
+    def admin_vote_list(cls):
+        gift = Case(None, [(VoteEvent.is_gift == 1, VoteEvent.amount)], 0)
+        total_profit = (fn
+                        .COALESCE(fn.SUM(fn.DISTINCT(gift)), 0)
+                        .alias('total_profit')
+                        )
+        normal = Case(None, [(VoteEvent.is_gift == 0, 1)], None)
+        total_vote = (fn
+                      .COALESCE(fn.COUNT(normal), 0)
+                      .alias('total_vote')
+                      )
+        active = Case(None, [(Candidate.is_active == 1, 1)], None)
+        total_candidate = (fn
+                           .COALESCE(fn.COUNT(active), 0)
+                           .alias('total_candidate')
+                           )
+        query = cls.select(
+            cls,
+            total_profit,
+            total_vote,
+            total_candidate
+        ).join(VoteEvent, join_type=JOIN.LEFT_OUTER).switch(cls).join(Candidate, join_type=JOIN.LEFT_OUTER).group_by(
+            cls.id)
         return query
 
 
@@ -75,11 +105,38 @@ class Candidate(Model):
     @classmethod
     def get_vote_info_by_user_id(cls, user_id):
         return cls.select(
-            cls.cover,
+            cls,
             Vote.title,
+            Vote.id,
             Vote.description,
-            cls.vote_id
         ).join(Vote).where(cls.user_id == user_id)
+
+    @classmethod
+    def get_admin_vote_info(cls, user_id):
+        normal = Case(None, [(VoteEvent.is_gift == 0, 1)], None)
+        total_vote = (fn
+                      .COALESCE(fn.COUNT(normal), 0)
+                      .alias('total_vote')
+                      )
+        gift = Case(None, [(VoteEvent.is_gift == 1, VoteEvent.amount)], 0)
+        total_profit = (fn
+                        .COALESCE(fn.SUM(fn.DISTINCT(gift)), 0)
+                        .alias('total_profit')
+                        )
+        return cls.select(
+            cls,
+            Vote.title,
+            total_vote,
+            Vote.id,
+            Vote.description,
+            Vote.start_time,
+            Vote.end_time,
+            total_profit,
+        ).join(Vote).switch(cls).join(
+            VoteEvent, join_type=JOIN.LEFT_OUTER
+        ).switch(cls).join(
+            CandidateImage, join_type=JOIN.LEFT_OUTER
+        ).where(cls.user_id == user_id).group_by(cls.id)
 
     class Meta:
         indexes = (
@@ -97,6 +154,7 @@ class VoteEvent(Model):
     voter_nickname = CharField(max_length=20, default='', verbose_name="昵称")
     candidate = ForeignKeyField(Candidate)
     gift = ForeignKeyField(Gift, null=True)
+    gift_name = CharField(max_length=15, verbose_name='礼物名称', default='')
     is_gift = BooleanField(default=False, verbose_name="是否是礼物")
     amount = FloatField(verbose_name='金额')
     image = CharField(max_length=200, verbose_name='礼物图片', default='')
@@ -118,6 +176,21 @@ class VoteEvent(Model):
             cls.voter_avatar,
             cls.voter_nickname,
         ).limit(rank)
+
+    @classmethod
+    def admin_extend(cls):
+        query = (cls.select(
+            cls,
+            Candidate.number,
+            User.nickname,
+            Candidate.user_id,
+        ).join(User)
+                 .switch(cls).join(Vote)
+                 .switch(cls).join(Candidate)
+                 .switch(cls).join(Gift)
+                 .where(cls.is_gift == 1))
+
+        return query
 
     class Meta:
         db_table = 'vote_event'

@@ -7,13 +7,16 @@ from peewee_async import Manager
 from settings import database
 
 objects = Manager(database)
+
+
 class Model(Model):
-    objects = Manager(database)
+    objects = objects
     create_time = DateTimeField(default=datetime.now, verbose_name="添加时间")
     update_time = DateTimeField(default=datetime.now, verbose_name="更新时间")
 
     class Meta:
         database = database
+
 
 class PasswordHash(bytes):
     def check_password(self, password):
@@ -45,5 +48,3 @@ class PasswordField(BlobField):
             value = value.encode('utf-8')
 
         return PasswordHash(value)
-
-
