@@ -1,11 +1,14 @@
 import functools
+import json
 
 from tornado import escape
 from tornado.auth import OAuth2Mixin, _auth_return_future, AuthError
 from tornado.concurrent import future_set_result_unless_cancelled
 from tornado.stack_context import wrap
 
+from models import objects
 from tools.pagination import Pagination
+from utils.json import json_serializer
 
 try:
     import urlparse
@@ -86,9 +89,10 @@ class WexinOAuth2Mixin(OAuth2Mixin):
 
 
 class PaginationMixin:
+    query = None
     pagination_class = Pagination
 
-    def get_paginate_query(self, query):
+    def paginate_query(self, query):
 
         query = self.paginator.paginate_queryset(query, self)
         return query
@@ -111,3 +115,34 @@ class PaginationMixin:
             else:
                 self._paginator = self.pagination_class()
         return self._paginator
+
+    def get_query(self):
+        assert self.query is not None, (
+                "'%s' should either include a `query` attribute, "
+                "or override the `get_query()` method."
+                % self.__class__.__name__
+        )
+        queryset = self.query
+        return queryset
+
+    def filter_query(self, query):
+        return query
+
+
+class ListModelMixin(object):
+    """
+    List a query.
+    """
+
+    async def get(self, *args, **kwargs):
+        query = self.filter_query(self.get_query())
+
+        page = self.paginate_query(query)
+        if page is not None:
+            query = page
+
+        data = await objects.execute(query)
+        ret = self.get_serializer_data(data)
+        if page is not None:
+            ret = self.get_paginated_response(ret)
+        self.finish(json.dumps(ret, default=json_serializer))
