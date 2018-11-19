@@ -2,15 +2,17 @@ import json
 import logging
 from datetime import date
 
+from playhouse.shortcuts import model_to_dict
+
 from exceptions import NotFoundError, IsVoteError, ErrorCode, DuplicateError, DisableVoting
-from forms.votes import CandidateForm, VoteEventForm
+from forms.votes import CandidateForm, VoteEventForm, VoteForm, VoteUpdateForm, CandidateStatusForm
 from handlers.base import BaseHandler, GenericHandler
 from mixins import ListModelMixin
 from models import objects
 from models.users import User
 from models.votes import Candidate, Vote, VoteEvent, VoteBanner, CandidateImage
 from settings import redis
-from utils.decorators import async_authenticated
+from utils.decorators import async_authenticated, async_admin_required
 from utils.json import json_serializer
 
 logger = logging.getLogger('vote.' + __name__)
@@ -20,7 +22,6 @@ class VoteDetailHandler(BaseHandler):
     """
     投票详情接口
     """
-    SUPPORTED_METHODS = ('GET', 'OPTIONS')
 
     async def get(self, pk, *args, **kwargs):
         try:
@@ -46,6 +47,33 @@ class VoteDetailHandler(BaseHandler):
                 number_of_candidates=vote.number_of_candidates,
             )
             self.finish(json.dumps(ret, default=json_serializer))
+        except Vote.DoesNotExist:
+            raise NotFoundError("投票活动不存在")
+
+    async def put(self, pk, *args, **kwargs):
+        try:
+            vote = await objects.get(Vote, id=pk)
+            param = self.request.body.decode("utf-8")
+            data = json.loads(param)
+            form = VoteUpdateForm.from_json(data)
+            if form.validate():
+                banners = form.data.pop('banners', [])
+                form.data.cover = banners[0]
+                for key, value in form.data.items():
+                    setattr(vote, key, value)
+                if banners:
+                    await objects.delete(VoteBanner.select().where(VoteBanner.vote == vote))
+                    for banner in banners:
+                        await objects.create(VoteBanner, vote_id=vote.id, image=banner)
+                self.finish(json.dumps(model_to_dict(Vote), default=json_serializer))
+
+            else:
+                ret = {}
+                self.set_status(400)
+                for field in form.errors:
+                    ret[field] = form.errors[field][0]
+                self.finish(ret)
+
         except Vote.DoesNotExist:
             raise NotFoundError("投票活动不存在")
 
@@ -351,3 +379,45 @@ class VoteListHandler(ListModelMixin, GenericHandler):
                 total_vote=vote.total_vote,
                 total_candidate=vote.total_candidate))
         return ret
+
+    @async_authenticated
+    @async_admin_required
+    async def post(self, *args, **kwargs):
+        param = self.request.body.decode("utf-8")
+        data = json.loads(param)
+        vote_form = VoteForm.from_json(data)
+        if vote_form.validate():
+            banners = vote_form.data.pop('banners')
+            vote_form.data['cover'] = banners[0]
+            vote = await objects.create(Vote, **vote_form.data)
+            for banner in banners:
+                await objects.create(VoteBanner, vote_id=vote.id, image=banner)
+            self.finish(json.dumps(model_to_dict(Vote), default=json_serializer))
+        else:
+            ret = {}
+            self.set_status(400)
+            for field in vote_form.errors:
+                ret[field] = vote_form.errors[field][0]
+            self.finish(ret)
+
+
+class CandidateStatusHandler(BaseHandler):
+
+    @async_authenticated
+    @async_admin_required
+    async def put(self, pk, *args, **kwargs):
+        try:
+            candidate = await objects.get(Candidate, id=pk)
+            param = self.request.body.decode("utf-8")
+            data = json.loads(param)
+            form = CandidateStatusForm.from_json(data)
+            if form.validate():
+                candidate.is_active = form.is_active.data
+                await objects.update(candidate)
+                self.finish({'candidate_id': pk, 'is_active': candidate.is_active})
+            else:
+                self.set_status(400)
+                self.finish({'is_active': form.errors['is_active']})
+
+        except Candidate.DoesNotExist:
+            raise NotFoundError("参赛选手不存在")

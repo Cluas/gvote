@@ -8,7 +8,7 @@ import logging
 from tornado.auth import AuthError
 
 from exceptions import APIException
-from mixins import TornadoCORSMixin
+from mixins import TornadoCORSMixin, PaginationMixin
 
 logger = logging.getLogger('vote.' + __name__)
 
@@ -77,3 +77,9 @@ class BaseHandler(TornadoCORSMixin, tornado.web.RequestHandler):
 
             if isinstance(exc, AuthError):
                 self.set_status(401)
+                ret.update(err_code='weixin_error', err_msg=str(exc))
+                self.finish(ret)
+
+
+class GenericHandler(PaginationMixin, BaseHandler):
+    pass

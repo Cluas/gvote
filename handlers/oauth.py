@@ -5,6 +5,7 @@ from tornado.auth import AuthError
 
 from handlers.base import BaseHandler
 from mixins import WexinOAuth2Mixin
+from models import objects
 from models.users import User
 from settings import private_key
 
@@ -13,11 +14,12 @@ class WeixinOAuth2LoginHandler(BaseHandler, WexinOAuth2Mixin):
     """
     微信Oauth登录
     """
+
     async def post(self):
         ret = {}
         if self.get_json_argument('code', False):
             access = await self.get_authenticated_user(
-                code=self.get_argument('code'))
+                code=self.get_json_argument('code'))
             weixin_user = await self.oauth2_request(
                 "https://api.weixin.qq.com/sns/userinfo",
                 access_token=access["access_token"],
@@ -29,13 +31,13 @@ class WeixinOAuth2LoginHandler(BaseHandler, WexinOAuth2Mixin):
                                                 weixin_user['sex'],
                                                 weixin_user['headimgurl'])
             try:
-                user = await User.objects.get(User, openid=openid)
+                user = await objects.get(User, openid=openid)
             except User.DoesNotExist:
-                user = await User.objects.create(User,
-                                                 nickname=nickname,
-                                                 gender=gender,
-                                                 openid=openid,
-                                                 avatar=avatar)
+                user = await objects.create(User,
+                                            nickname=nickname,
+                                            gender=gender,
+                                            openid=openid,
+                                            avatar=avatar)
 
             payload = {
                 "id": user.id,

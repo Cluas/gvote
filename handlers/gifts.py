@@ -1,15 +1,18 @@
 import json
 import logging
 
+from playhouse.shortcuts import model_to_dict
+
 from exceptions import NotFoundError
-from forms.gifts import GiftSendForm
+from forms.gifts import GiftSendForm, GiftForm
 from handlers.base import BaseHandler
 from models import objects
 from models.gifts import Gift
 from models.votes import Candidate, VoteEvent
 from settings import redis
-from utils.decorators import async_authenticated
+from utils.decorators import async_authenticated, async_admin_required
 from utils.async_weixin import async_weixin_pay
+from utils.json import json_serializer
 
 logger = logging.getLogger('vote.' + __name__)
 
@@ -18,7 +21,6 @@ class GiftListHandler(BaseHandler):
     """
     礼物列表接口
     """
-    SUPPORTED_METHODS = ('GET', 'OPTIONS')
 
     async def get(self, *args, **kwargs):
         query = Gift.select(
@@ -27,7 +29,7 @@ class GiftListHandler(BaseHandler):
             Gift.price,
             Gift.reach,
             Gift.id
-        )
+        ).where(Gift.is_void == 0)
 
         gifts = await objects.execute(query)
         ret = []
@@ -42,9 +44,39 @@ class GiftListHandler(BaseHandler):
 
         self.finish(json.dumps(ret))
 
+    @async_authenticated
+    @async_admin_required
+    async def post(self, *args, **kwargs):
+        param = self.request.body.decode("utf-8")
+        data = json.loads(param)
+        gift_form = GiftForm.from_json(data)
+        if gift_form.validate():
+            gift = await objects.create(Gift, **gift_form.data)
+            self.finish(json.dumps(model_to_dict(gift), default=json_serializer))
+        else:
+            ret = {}
+            self.set_status(400)
+            for field in gift_form.errors:
+                ret[field] = gift_form.errors[field][0]
+            self.finish(ret)
+
+
+class GiftDetailHandler(BaseHandler):
+
+    @async_authenticated
+    @async_admin_required
+    async def delete(self, gift_id, *args, **kwargs):
+        try:
+            gift = await objects.get(Gift, id=gift_id)
+            gift.is_void = True
+            await objects.update(gift)
+            self.set_status(204)
+            self.finish()
+        except Gift.DoesNotExist:
+            raise NotFoundError("礼物不存在")
+
 
 class GiftSendHandler(BaseHandler):
-    SUPPORTED_METHODS = ('POST', 'OPTIONS')
 
     @async_authenticated
     async def post(self, candidate_id, *args, **kwargs):
@@ -78,6 +110,7 @@ class GiftSendHandler(BaseHandler):
                                                'voter_avatar': f'{user.avatar}',
                                                'image': f'{gift.image}',
                                                'reach': f'{gift.reach*num}',
+                                               'gift_name': f'{gift.name}',
                                                'vote_id': f'{candidate.vote_id}'},
                                 )
                     redis.expire(out_trade_no, 10 * 60)
@@ -115,6 +148,7 @@ class WeixinNotifyHandler(BaseHandler):
                                                       vote_id=gift_data['vote_id'],
                                                       reach=gift_data['reach'],
                                                       image=gift_data['image'],
+                                                      gift_name=gift_data['gift_name'],
                                                       out_trade_no=out_trade_no)
 
                     candidate = await objects.get(Candidate, id=vote_event.candidate_id)
