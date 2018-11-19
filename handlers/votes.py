@@ -8,6 +8,7 @@ from forms.votes import CandidateForm
 from handlers.base import BaseHandler
 from mixins import PaginationMixin
 from models import objects
+from models.users import User
 from models.votes import Candidate, Vote, VoteEvent, VoteBanner, CandidateImage
 from settings import redis
 from utils.decorators import async_authenticated
@@ -58,11 +59,14 @@ class CandidateListHandler(BaseHandler, PaginationMixin):
 
     async def get(self, vote_id, *args, **kwargs):
         ordering = self.get_argument("ordering", None)
+        key = self.get_argument("key", None)
         query = Candidate.query_candidates_by_vote_id(vote_id=vote_id)
         if ordering == '1':
             query = query.order_by(Candidate.create_time.desc())
         elif ordering == '0':
             query = query.order_by(Candidate.number_of_votes.desc())
+        if key:
+            query = query.where(User.name.contains(key) | Candidate.number.contains(key))
 
         page = self.get_paginate_query(query)
         if page is not None:
@@ -180,15 +184,21 @@ class VoteEventListHandler(BaseHandler, PaginationMixin):
 
     async def get(self, candidate_id, *args, **kwargs):
 
-        query = VoteEvent.select().where(VoteEvent.candidate_id == candidate_id)
-        page = self.get_paginate_query(query)
-        if page is not None:
-            query = page
-        vote_events = await objects.execute(query)
-        ret = self.get_serializer_data(vote_events)
-        if page is not None:
-            ret = self.get_paginated_response(ret)
-        self.finish(json.dumps(ret, default=json_serializer))
+        try:
+            await objects.get(Candidate, id=candidate_id)
+
+            query = VoteEvent.select().where(VoteEvent.candidate_id == candidate_id)
+            page = self.get_paginate_query(query)
+            if page is not None:
+                query = page
+            vote_events = await objects.execute(query)
+            ret = self.get_serializer_data(vote_events)
+            if page is not None:
+                ret = self.get_paginated_response(ret)
+            self.finish(json.dumps(ret, default=json_serializer))
+
+        except Candidate.DoesNotExist:
+            raise NotFoundError("参赛选手未找到")
 
     @staticmethod
     def get_serializer_data(vote_events):
