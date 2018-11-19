@@ -1,12 +1,11 @@
 import json
 import logging
-
 from datetime import date
 
 from exceptions import NotFoundError, IsVoteError, ErrorCode, DuplicateError, DisableVoting
-from forms.votes import CandidateForm
-from handlers.base import BaseHandler
-from mixins import PaginationMixin
+from forms.votes import CandidateForm, VoteEventForm
+from handlers.base import BaseHandler, GenericHandler
+from mixins import ListModelMixin
 from models import objects
 from models.users import User
 from models.votes import Candidate, Vote, VoteEvent, VoteBanner, CandidateImage
@@ -32,7 +31,7 @@ class VoteDetailHandler(BaseHandler):
 
             vote = vote[0]
             vote.views += 1
-            await objects.execute(Vote.update(views=Vote.views + 1).where(Vote.id == pk))
+            await objects.update(vote)
 
             banners = [banner.image for banner in vote.banners]
             ret = dict(
@@ -51,31 +50,28 @@ class VoteDetailHandler(BaseHandler):
             raise NotFoundError("投票活动不存在")
 
 
-class CandidateListHandler(BaseHandler, PaginationMixin):
+class CandidateListHandler(ListModelMixin, GenericHandler):
     """
     选手列表接口
     """
+
     SUPPORTED_METHODS = ('GET', 'POST', 'OPTIONS')
 
-    async def get(self, vote_id, *args, **kwargs):
+    def get_query(self):
+        vote_id = self.path_args[0]
+        query = Candidate.query_candidates_by_vote_id(vote_id=vote_id)
+        return query
+
+    def filter_query(self, query):
         ordering = self.get_argument("ordering", None)
         key = self.get_argument("key", None)
-        query = Candidate.query_candidates_by_vote_id(vote_id=vote_id)
         if ordering == '1':
             query = query.order_by(Candidate.create_time.desc())
         elif ordering == '0':
             query = query.order_by(Candidate.number_of_votes.desc())
         if key:
             query = query.where(User.name.contains(key) | Candidate.number.contains(key))
-
-        page = self.get_paginate_query(query)
-        if page is not None:
-            query = page
-        candidates = await objects.execute(query)
-        ret = self.get_serializer_data(candidates)
-        if page is not None:
-            ret = self.get_paginated_response(ret)
-        self.finish(json.dumps(ret))
+        return query
 
     @staticmethod
     def get_serializer_data(candidates):
@@ -176,7 +172,7 @@ class CandidateDetailHandler(BaseHandler):
             raise NotFoundError("投票不存在")
 
 
-class VoteEventListHandler(BaseHandler, PaginationMixin):
+class VoteEventDetailHandler(ListModelMixin, GenericHandler):
     """
     投票事件流列表接口
     """
@@ -187,18 +183,15 @@ class VoteEventListHandler(BaseHandler, PaginationMixin):
         try:
             await objects.get(Candidate, id=candidate_id)
 
-            query = VoteEvent.select().where(VoteEvent.candidate_id == candidate_id)
-            page = self.get_paginate_query(query)
-            if page is not None:
-                query = page
-            vote_events = await objects.execute(query)
-            ret = self.get_serializer_data(vote_events)
-            if page is not None:
-                ret = self.get_paginated_response(ret)
-            self.finish(json.dumps(ret, default=json_serializer))
+            await super().get(candidate_id, *args, **kwargs)
 
         except Candidate.DoesNotExist:
             raise NotFoundError("参赛选手未找到")
+
+    def get_query(self):
+        candidate_id = self.path_args[0]
+        query = VoteEvent.select().where(VoteEvent.candidate_id == candidate_id)
+        return query
 
     @staticmethod
     def get_serializer_data(vote_events):
@@ -288,3 +281,73 @@ class VotingHandler(BaseHandler):
             self.finish(json.dumps({'number_of_votes': candidate.number_of_votes}))
         except Candidate.DoesNotExist:
             raise NotFoundError("参赛选手未找到")
+
+
+class VoteEventListHandler(ListModelMixin, GenericHandler):
+    """
+    投票事件流列表接口
+    """
+    query = VoteEvent.admin_extend()
+    SUPPORTED_METHODS = ('GET', 'OPTIONS')
+
+    @staticmethod
+    def get_serializer_data(vote_events):
+        ret = []
+        for vote_event in vote_events:
+            ret.append(dict(
+                out_trade_no=vote_event.out_trade_no,
+                voter_nickname=vote_event.voter_nickname,
+                reach=vote_event.reach,
+                gift_name=vote_event.gift_name,
+                number_of_gifts=vote_event.number_of_gifts,
+                gainer_id=vote_event.candidate.user_id,
+                create_time=vote_event.create_time))
+        return ret
+
+    def filter_query(self, query):
+        form = VoteEventForm(self.request.arguments)
+        if form.validate():
+            out_trade_no = form.out_trade_no.data
+            vote_id = form.vote_id.data
+            key = form.key.data
+            number = form.number.data
+            start_time = form.start_time.data
+            end_time = form.end_time.data
+            if out_trade_no:
+                query = query.where(VoteEvent.out_trade_no == out_trade_no)
+            if vote_id:
+                query = query.where(VoteEvent.vote_id == vote_id)
+            if key:
+                query = query.where(User.name.contains(key) | User.nickname.contains(key))
+            if number:
+                query = query.where(Candidate.number == number)
+            if start_time:
+                query = query.where(VoteEvent.create_time >= start_time)
+            if end_time:
+                query = query.where(VoteEvent.create_time <= end_time)
+        return query
+
+
+class VoteListHandler(ListModelMixin, GenericHandler):
+    """
+    投票列表
+    """
+    SUPPORTED_METHODS = ('GET', 'OPTIONS')
+    query = Vote.admin_vote_list()
+
+    @staticmethod
+    def get_serializer_data(votes):
+        ret = []
+        for vote in votes:
+            ret.append(dict(
+                id=vote.id,
+                title=vote.title,
+                description=vote.description,
+                start_time=vote.start_time,
+                end_time=vote.end_time,
+                views=vote.views,
+                announcement=vote.announcement,
+                total_profit=vote.total_profit,
+                total_vote=vote.total_vote,
+                total_candidate=vote.total_candidate))
+        return ret
