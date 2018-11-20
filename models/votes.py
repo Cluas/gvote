@@ -18,8 +18,9 @@ class Vote(Model):
 
     @classmethod
     def get_vote_info_by_pk(cls, pk):
+        active = Case(None, [(Candidate.is_active == 1, 1)], None)
         total_candidate = (fn
-                           .COALESCE(fn.COUNT(Candidate.id).filter(Candidate.is_active == 1), 0)
+                           .COALESCE(fn.COUNT(active), 0)
                            .alias('number_of_candidates')
                            )
         query = cls.select(
