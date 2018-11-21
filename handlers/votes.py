@@ -111,8 +111,8 @@ class CandidateListHandler(ListModelMixin, GenericHandler):
                 name=candidate.user.name,
                 number=candidate.number,
                 number_of_votes=candidate.number_of_votes,
-                diff=candidate.diff,
-                vote_rank=candidate.vote_rank))
+                diff=candidate.candidate.diff,
+                vote_rank=candidate.candidate.vote_rank))
         return ret
 
     @async_authenticated
@@ -179,26 +179,23 @@ class CandidateDetailHandler(BaseHandler):
 
             await objects.get(Vote, id=vote_id)
 
-            query = Candidate.query_candidates_by_vote_id(vote_id=vote_id)
+            query = Candidate.query_candidates_by_vote_id(vote_id=vote_id).where(Candidate.id == candidate_id)
             candidates = await objects.prefetch(query, CandidateImage.select())
-            candidate = None
-            for c in candidates:
-                if c.id == int(candidate_id):
-                    candidate = c
 
+            if not len(candidates):
+                raise NotFoundError("选手不存在")
+            candidate = candidates[0]
             ret = dict(
                 name=candidate.user.name,
                 number=candidate.number,
                 images=[image.url for image in candidate.images],
                 declaration=candidate.declaration,
                 number_of_votes=candidate.number_of_votes,
-                diff=candidate.diff,
-                rank=candidate.vote_rank)
+                diff=candidate.candidate.diff,
+                rank=candidate.candidate.vote_rank)
 
             self.finish(json.dumps(ret))
 
-        except IndexError:
-            raise NotFoundError("选手不存在")
         except Vote.DoesNotExist:
             raise NotFoundError("投票不存在")
 
