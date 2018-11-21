@@ -218,7 +218,7 @@ class VoteEventDetailHandler(ListModelMixin, GenericHandler):
 
     def get_query(self):
         candidate_id = self.path_args[0]
-        query = VoteEvent.select().where(VoteEvent.candidate_id == candidate_id)
+        query = VoteEvent.select().where(VoteEvent.candidate_id == candidate_id).order_by(VoteEvent.create_time.desc())
         return query
 
     @staticmethod
