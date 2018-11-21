@@ -179,9 +179,12 @@ class CandidateDetailHandler(BaseHandler):
 
             await objects.get(Vote, id=vote_id)
 
-            query = Candidate.query_candidates_by_vote_id(vote_id=vote_id).where(Candidate.id == candidate_id)
-            candidate = await objects.prefetch(query, CandidateImage.select())
-            candidate = candidate[0]
+            query = Candidate.query_candidates_by_vote_id(vote_id=vote_id)
+            candidates = await objects.prefetch(query, CandidateImage.select())
+            candidate = None
+            for c in candidates:
+                if c.id == int(candidate_id):
+                    candidate = c
 
             ret = dict(
                 name=candidate.user.name,
