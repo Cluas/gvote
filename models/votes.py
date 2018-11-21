@@ -91,6 +91,11 @@ class Candidate(Model):
                 - cls.number_of_votes)
         vote_rank = (fn.RANK().over(
             order_by=[cls.number_of_votes.desc(), cls.create_time])).alias('vote_rank')
+        subquery = cls.select(
+            cls.id,
+            fn.COALESCE(diff, 0).alias('diff'),
+            vote_rank
+        ).alias('subquery')
         query = cls.select(
             cls.id,
             cls.cover,
@@ -98,9 +103,11 @@ class Candidate(Model):
             cls.number,
             cls.number_of_votes,
             cls.declaration,
-            fn.COALESCE(diff, 0).alias('diff'),
-            vote_rank
-        ).join(User).where(cls.vote_id == vote_id, cls.is_active == 1)
+            # fn.COALESCE(diff, 0).alias('diff'),
+            subquery.c.diff.alias('diff'),
+            subquery.c.vote_rank.alias('vote_rank')
+        ).join(subquery, on=subquery.c.id == cls.id).switch(cls).join(User).where(cls.vote_id == vote_id,
+                                                                                  cls.is_active == 1)
         return query
 
     @classmethod
