@@ -37,7 +37,8 @@ class WeixinOAuth2LoginHandler(BaseHandler, WexinOAuth2Mixin):
                                             nickname=nickname,
                                             gender=gender,
                                             openid=openid,
-                                            avatar=avatar)
+                                            avatar=avatar,
+                                            password='')
 
             payload = {
                 "id": user.id,
