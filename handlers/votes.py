@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import date
+from datetime import date, datetime
 
 from playhouse.shortcuts import model_to_dict
 
@@ -379,6 +379,20 @@ class VoteListHandler(ListModelMixin, GenericHandler):
                 total_vote=vote.total_vote,
                 total_candidate=vote.total_candidate))
         return ret
+
+    def filter_query(self, query):
+        status = self.get_argument('status', '')
+        key = self.get_argument('key', '')
+
+        if status:
+            now = datetime.now()
+            if status == '1':
+                query = query.where(Vote.start_time <= now <= Vote.end_time)
+            elif status == '0':
+                query = query.where(Vote.end_time <= now)
+        if key:
+            query = query.where(Vote.name.contains(key))
+        return query
 
     @async_authenticated
     @async_admin_required
