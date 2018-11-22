@@ -87,6 +87,7 @@ class UserListHandler(ListModelMixin, GenericHandler):
                 id=user.id,
                 nickname=user.nickname,
                 name=user.name,
+                gender=user.gender,
                 avatar=user.avatar,
                 total_cost=user.total_cost,
                 mobile=user.mobile))

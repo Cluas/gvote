@@ -36,11 +36,11 @@ class JWTTokenHandler(BaseHandler):
                     }
                     token = jwt.encode(payload, private_key, algorithm='RS256')
                     ret["id"] = user.id
-                    if user.nick_name is not None:
+                    if user.nickname is not None:
                         ret["nickname"] = user.nickname
                     else:
                         ret["nickname"] = user.mobile
-                        ret["token"] = token.decode("utf8")
+                    ret["token"] = token.decode("utf8")
 
             except User.DoesNotExist:
                 self.set_status(400)

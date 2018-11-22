@@ -50,6 +50,8 @@ class VoteDetailHandler(BaseHandler):
         except Vote.DoesNotExist:
             raise NotFoundError("投票活动不存在")
 
+    @async_authenticated
+    @async_admin_required
     async def put(self, pk, *args, **kwargs):
         try:
             vote = await objects.get(Vote, id=pk)
@@ -362,6 +364,11 @@ class VoteListHandler(ListModelMixin, GenericHandler):
     """
     SUPPORTED_METHODS = ('GET', 'OPTIONS')
     query = Vote.admin_vote_list()
+
+    @async_authenticated
+    @async_admin_required
+    async def get(self, *args, **kwargs):
+        await super().get(*args, **kwargs)
 
     @staticmethod
     def get_serializer_data(votes):

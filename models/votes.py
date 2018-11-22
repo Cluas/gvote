@@ -95,7 +95,8 @@ class Candidate(Model):
             cls.id,
             fn.COALESCE(diff, 0).alias('diff'),
             vote_rank
-        ).alias('subquery')
+        ).where(cls.vote_id == vote_id,
+                cls.is_active == 1).alias('subquery')
         query = cls.select(
             cls.id,
             cls.cover,
@@ -103,9 +104,8 @@ class Candidate(Model):
             cls.number,
             cls.number_of_votes,
             cls.declaration,
-            # fn.COALESCE(diff, 0).alias('diff'),
-            subquery.c.diff.alias('diff'),
-            subquery.c.vote_rank.alias('vote_rank')
+            subquery.c.diff,
+            subquery.c.vote_rank,
         ).join(subquery, on=subquery.c.id == cls.id).switch(cls).join(User).where(cls.vote_id == vote_id,
                                                                                   cls.is_active == 1)
         return query
@@ -173,7 +173,7 @@ class VoteEvent(Model):
     @classmethod
     def get_vote_rank(cls, candidate_id, rank=5):
         vote_rank = (fn.RANK().over(
-            order_by=[fn.SUM(cls.reach), cls.voter_nickname])).alias('vote_rank')
+            order_by=[fn.SUM(cls.reach).desc(), cls.voter_nickname])).alias('vote_rank')
         return cls.select(
             cls.voter_avatar,
             cls.voter_nickname,

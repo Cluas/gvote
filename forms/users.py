@@ -22,4 +22,4 @@ class RegisterForm(Form):
 
 
 class UserStatusForm(Form):
-    can_vote = BooleanField("是否能投票")
+    can_vote = BooleanField("是否能投票", validators=[DataRequired(message="can_vote是必填项")])
