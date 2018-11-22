@@ -8,6 +8,7 @@ from tornado.httpclient import AsyncHTTPClient
 
 from handlers.base import BaseHandler
 from settings import APPID, SECRET_KEY, redis
+from tornado.log import app_log
 
 
 class WeixinJSAPIHandler(BaseHandler):
@@ -23,6 +24,7 @@ class WeixinJSAPIHandler(BaseHandler):
             self.finish({'url': 'url是必填的'})
         jsapi_ticket = await self.get_jsapi_ticket()
         jsapi = self.jsapi(jsapi_ticket, url)
+
         self.finish(jsapi)
 
     async def get_access_token(self):
@@ -32,8 +34,10 @@ class WeixinJSAPIHandler(BaseHandler):
                    f'?grant_type=client_credential&appid={APPID}&secret={SECRET_KEY}')
             resp = await AsyncHTTPClient().fetch(url)
             content = resp.body.decode("utf-8")
+            content = json.loads(content)
             if "errcode" in content:
-                self.finish(content)
+                from exceptions import WexinError
+                raise WexinError(content['errmsg'])
             access_token = content['access_token']
             redis.set('wexin_access_token', access_token, 7100)
         return access_token
@@ -46,6 +50,7 @@ class WeixinJSAPIHandler(BaseHandler):
                    f'?access_token={access_token}&type=jsapi')
             resp = await AsyncHTTPClient().fetch(url)
             content = resp.body.decode("utf-8")
+            content = json.loads(content)
             jsapi_ticket = content['ticket']
             redis.set('wexin_jsapi_ticket', access_token, 7100)
         return jsapi_ticket
@@ -61,10 +66,12 @@ class WeixinJSAPIHandler(BaseHandler):
         char = string.ascii_letters + string.digits
         return "".join(random.choice(char) for _ in range(32))
 
-    async def jsapi(self, ticket, url):
+    def jsapi(self, ticket, url):
         timestamp = str(int(time.time()))
         nonce_str = self.nonce_str
         raw = dict(timestamp=timestamp,
-                   noncestr=nonce_str, jsapi_ticket=ticket, url=url)
+                   nonceStr=nonce_str, jsapi_ticket=ticket, url=url)
         sign = self.sign(raw)
-        return raw.update(sign=sign)
+        data = dict(timestamp=timestamp, nonceStr=nonce_str, signature=sign, appId=APPID)
+
+        return data
