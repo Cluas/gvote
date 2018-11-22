@@ -92,6 +92,16 @@ class UserListHandler(ListModelMixin, GenericHandler):
                 mobile=user.mobile))
         return ret
 
+    def filter_query(self, query):
+        vote_id = self.get_argument('vote_id', '')
+        key = self.get_argument('key', '')
+
+        if vote_id:
+            query = query.switch(User).join(Candidate).where(Candidate.vote_id == vote_id)
+        if key:
+            query = query.where(User.name.contains(key) | User.nickname.contains(key) | User.mobile.contains(key))
+        return query
+
 
 class UserStatusHandler(BaseHandler):
 
