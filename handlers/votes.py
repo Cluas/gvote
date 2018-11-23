@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 from playhouse.shortcuts import model_to_dict
 
@@ -126,7 +126,7 @@ class VoteAdminDetailHandler(BaseHandler):
         try:
             await objects.get(Vote, id=pk)
 
-            vote = await objects.prefetch(Vote.select(), VoteBanner.select())
+            vote = await objects.prefetch(Vote.select().where(Vote.id == pk), VoteBanner.select())
 
             vote = vote[0]
 
@@ -171,7 +171,8 @@ class VoteAdminDetailHandler(BaseHandler):
                     for key, value in data.items():
                         setattr(vote, key, value)
                     _banners = await objects.execute(VoteBanner.select().where(
-                        VoteBanner.vote == vote & VoteBanner.id.not_in(ids)))
+                        VoteBanner.vote == vote, VoteBanner.id.not_in(ids)))
+
                     for banner in _banners:
                         await objects.delete(banner)
                     if new_banners:
@@ -179,7 +180,7 @@ class VoteAdminDetailHandler(BaseHandler):
                             banner = await objects.create(VoteBanner, vote_id=vote.id, image=b['url'])
                             new_banners[i]['id'] = banner.id
                     banners = old_banners + new_banners
-                    objects.update(vote)
+                    await objects.update(vote)
                     ret = model_to_dict(vote, exclude=[Vote.views, Vote.cover, Vote.create_time, Vote.update_time])
                     ret['banners'] = banners
                     self.finish(json.dumps(ret, default=json_serializer))
@@ -224,6 +225,7 @@ class CandidateListHandler(ListModelMixin, GenericHandler):
                 cover=candidate.cover,
                 id=candidate.id,
                 name=candidate.user.name,
+                is_avtive=candidate.is_active,
                 number=candidate.number,
                 number_of_votes=candidate.number_of_votes,
                 diff=candidate.candidate.diff,
@@ -415,7 +417,11 @@ class VotingHandler(BaseHandler):
                                      reach=1)
                 candidate.number_of_votes += 1
                 await objects.update(candidate)
-                redis.set(key, '1', 24 * 60 * 60)
+                now = datetime.now()
+                time_max = datetime.combine(now, time.max)
+                expire = int((time_max - now).total_seconds())
+
+                redis.set(key, '1', expire)
             self.finish(json.dumps({'number_of_votes': candidate.number_of_votes}))
         except Candidate.DoesNotExist:
             raise NotFoundError("参赛选手未找到")
