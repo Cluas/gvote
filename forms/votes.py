@@ -1,5 +1,5 @@
 from forms import Form
-from wtforms import StringField, FieldList, IntegerField, DateTimeField, BooleanField
+from wtforms import StringField, FieldList, IntegerField, DateTimeField, BooleanField, Field
 from wtforms.validators import DataRequired, Regexp, Length
 
 MOBILE_REGEX = "^1[358]\d{9}$|^1[48]7\d{8}$|^176\d{8}$"
@@ -33,7 +33,7 @@ class VoteForm(Form):
     rules = StringField('奖品和规则', validators=[DataRequired(message="请输入奖品和规则")])
     start_time = DateTimeField("开始时间", validators=[DataRequired(message="请输入开始时间")])
     end_time = DateTimeField("结束时间", validators=[DataRequired(message="请输入结束时间")])
-    banners = FieldList(StringField("宣传海报", validators=[DataRequired(message="请输入宣传海报列表")]))
+    banners = FieldList(Field("宣传海报", validators=[DataRequired(message="请输入宣传海报列表")]))
 
 
 class VoteUpdateForm(Form):
@@ -43,4 +43,4 @@ class VoteUpdateForm(Form):
     rules = StringField('奖品和规则')
     start_time = DateTimeField("开始时间")
     end_time = DateTimeField("结束时间")
-    banners = FieldList(StringField("宣传海报"))
+    banners = FieldList(Field("宣传海报"))

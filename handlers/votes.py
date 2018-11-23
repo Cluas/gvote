@@ -18,6 +18,72 @@ from utils.json import json_serializer
 logger = logging.getLogger('vote.' + __name__)
 
 
+class VoteListHandler(ListModelMixin, GenericHandler):
+    """
+    投票列表
+    """
+    query = Vote.admin_vote_list()
+
+    @async_authenticated
+    @async_admin_required
+    async def get(self, *args, **kwargs):
+        await super().get(*args, **kwargs)
+
+    @staticmethod
+    def get_serializer_data(votes):
+        ret = []
+        for vote in votes:
+            ret.append(dict(
+                id=vote.id,
+                title=vote.title,
+                description=vote.description,
+                start_time=vote.start_time,
+                end_time=vote.end_time,
+                views=vote.views,
+                announcement=vote.announcement,
+                total_profit=vote.total_profit,
+                total_vote=vote.total_vote,
+                total_candidate=vote.total_candidate))
+        return ret
+
+    def filter_query(self, query):
+        status = self.get_argument('status', '')
+        key = self.get_argument('key', '')
+
+        if status:
+            now = datetime.now()
+            if status == '1':
+                query = query.where(Vote.start_time <= now <= Vote.end_time)
+            elif status == '0':
+                query = query.where(Vote.end_time <= now)
+        if key:
+            query = query.where(Vote.name.contains(key))
+        return query
+
+    @async_authenticated
+    @async_admin_required
+    async def post(self, *args, **kwargs):
+        param = self.request.body.decode("utf-8")
+        data = json.loads(param)
+        vote_form = VoteForm.from_json(data)
+        if vote_form.validate():
+            banners = vote_form.data.pop('banners')
+            cover = banners[0]['url']
+            vote = await objects.create(Vote, cover=cover, **vote_form.data)
+            for i, banner in enumerate(banners):
+                banner = await objects.create(VoteBanner, vote_id=vote.id, image=banner['url'])
+                banners[i]['id'] = banner.id
+            ret = model_to_dict(vote, exclude=[Vote.views, Vote.cover, Vote.create_time, Vote.update_time])
+            ret['banners'] = banners
+            self.finish(json.dumps(ret, default=json_serializer))
+        else:
+            ret = {}
+            self.set_status(400)
+            for field in vote_form.errors:
+                ret[field] = vote_form.errors[field][0]
+            self.finish(ret)
+
+
 class VoteDetailHandler(BaseHandler):
     """
     投票详情接口
@@ -50,31 +116,80 @@ class VoteDetailHandler(BaseHandler):
         except Vote.DoesNotExist:
             raise NotFoundError("投票活动不存在")
 
+
+class VoteAdminDetailHandler(BaseHandler):
+    """
+    管理员投票详情接口
+    """
+
+    async def get(self, pk, *args, **kwargs):
+        try:
+            await objects.get(Vote, id=pk)
+
+            vote = await objects.prefetch(Vote.select(), VoteBanner.select())
+
+            vote = vote[0]
+
+            banners = [{'id': banner.id, 'url': banner.image} for banner in vote.banners]
+            ret = dict(
+                banners=banners,
+                start_time=vote.start_time,
+                end_time=vote.end_time,
+                announcement=vote.announcement,
+                title=vote.title,
+                description=vote.description,
+                rules=vote.rules,
+
+            )
+            self.finish(json.dumps(ret, default=json_serializer))
+        except Vote.DoesNotExist:
+            raise NotFoundError("投票活动不存在")
+
     @async_authenticated
     @async_admin_required
     async def put(self, pk, *args, **kwargs):
         try:
-            vote = await objects.get(Vote, id=pk)
-            param = self.request.body.decode("utf-8")
-            data = json.loads(param)
-            form = VoteUpdateForm.from_json(data)
-            if form.validate():
-                banners = form.data.pop('banners', [])
-                form.data.cover = banners[0]
-                for key, value in form.data.items():
-                    setattr(vote, key, value)
-                if banners:
-                    await objects.delete(VoteBanner.select().where(VoteBanner.vote == vote))
-                    for banner in banners:
-                        await objects.create(VoteBanner, vote_id=vote.id, image=banner)
-                self.finish(json.dumps(model_to_dict(Vote), default=json_serializer))
+            async with objects.database.atomic_async():
+                vote = await objects.get(Vote, id=pk)
+                param = self.request.body.decode("utf-8")
+                data = json.loads(param)
+                form = VoteUpdateForm.from_json(data)
+                if form.validate():
+                    data = dict(form.data)
+                    banners = data.pop('banners', [])
 
-            else:
-                ret = {}
-                self.set_status(400)
-                for field in form.errors:
-                    ret[field] = form.errors[field][0]
-                self.finish(ret)
+                    new_banners = []
+                    old_banners = []
+                    for b in banners:
+                        if b['id'] is None:
+                            new_banners.append(b)
+                        else:
+                            old_banners.append(b)
+
+                    ids = [b['id'] for b in old_banners]
+                    data['cover'] = banners[0]['url']
+                    for key, value in data.items():
+                        setattr(vote, key, value)
+                    _banners = await objects.execute(VoteBanner.select().where(
+                        VoteBanner.vote == vote & VoteBanner.id.not_in(ids)))
+                    for banner in _banners:
+                        await objects.delete(banner)
+                    if new_banners:
+                        for i, b in enumerate(new_banners):
+                            banner = await objects.create(VoteBanner, vote_id=vote.id, image=b['url'])
+                            new_banners[i]['id'] = banner.id
+                    banners = old_banners + new_banners
+                    objects.update(vote)
+                    ret = model_to_dict(vote, exclude=[Vote.views, Vote.cover, Vote.create_time, Vote.update_time])
+                    ret['banners'] = banners
+                    self.finish(json.dumps(ret, default=json_serializer))
+
+                else:
+                    ret = {}
+                    self.set_status(400)
+                    for field in form.errors:
+                        ret[field] = form.errors[field][0]
+                    self.finish(ret)
 
         except Vote.DoesNotExist:
             raise NotFoundError("投票活动不存在")
@@ -84,8 +199,6 @@ class CandidateListHandler(ListModelMixin, GenericHandler):
     """
     选手列表接口
     """
-
-    SUPPORTED_METHODS = ('GET', 'POST', 'OPTIONS')
 
     def get_query(self):
         vote_id = self.path_args[0]
@@ -174,7 +287,6 @@ class CandidateDetailHandler(BaseHandler):
     """
     选手详情接口
     """
-    SUPPORTED_METHODS = ('GET', 'OPTIONS')
 
     async def get(self, vote_id, candidate_id, *args, **kwargs):
         try:
@@ -206,7 +318,6 @@ class VoteEventDetailHandler(ListModelMixin, GenericHandler):
     """
     投票事件流列表接口
     """
-    SUPPORTED_METHODS = ('GET', 'OPTIONS')
 
     async def get(self, candidate_id, *args, **kwargs):
 
@@ -242,7 +353,6 @@ class VoteRankListHandler(BaseHandler):
     """
     投票贡献排行
     """
-    SUPPORTED_METHODS = ('GET', 'OPTIONS')
 
     async def get(self, candidate_id, *args, **kwargs):
         try:
@@ -267,7 +377,6 @@ class VoteRoleHandler(BaseHandler):
     """
     投票规则
     """
-    SUPPORTED_METHODS = ('GET', 'OPTIONS')
 
     async def get(self, pk, *args, **kwargs):
         try:
@@ -282,7 +391,6 @@ class VotingHandler(BaseHandler):
     """
     投票接口
     """
-    SUPPORTED_METHODS = ('POST', 'OPTIONS')
 
     @async_authenticated
     async def post(self, candidate_id, *args, **kwargs):
@@ -318,7 +426,6 @@ class VoteEventListHandler(ListModelMixin, GenericHandler):
     投票事件流列表接口
     """
     query = VoteEvent.admin_extend()
-    SUPPORTED_METHODS = ('GET', 'OPTIONS')
 
     @staticmethod
     def get_serializer_data(vote_events):
@@ -356,70 +463,6 @@ class VoteEventListHandler(ListModelMixin, GenericHandler):
             if end_time:
                 query = query.where(VoteEvent.create_time <= end_time)
         return query
-
-
-class VoteListHandler(ListModelMixin, GenericHandler):
-    """
-    投票列表
-    """
-    SUPPORTED_METHODS = ('GET', 'OPTIONS')
-    query = Vote.admin_vote_list()
-
-    @async_authenticated
-    @async_admin_required
-    async def get(self, *args, **kwargs):
-        await super().get(*args, **kwargs)
-
-    @staticmethod
-    def get_serializer_data(votes):
-        ret = []
-        for vote in votes:
-            ret.append(dict(
-                id=vote.id,
-                title=vote.title,
-                description=vote.description,
-                start_time=vote.start_time,
-                end_time=vote.end_time,
-                views=vote.views,
-                announcement=vote.announcement,
-                total_profit=vote.total_profit,
-                total_vote=vote.total_vote,
-                total_candidate=vote.total_candidate))
-        return ret
-
-    def filter_query(self, query):
-        status = self.get_argument('status', '')
-        key = self.get_argument('key', '')
-
-        if status:
-            now = datetime.now()
-            if status == '1':
-                query = query.where(Vote.start_time <= now <= Vote.end_time)
-            elif status == '0':
-                query = query.where(Vote.end_time <= now)
-        if key:
-            query = query.where(Vote.name.contains(key))
-        return query
-
-    @async_authenticated
-    @async_admin_required
-    async def post(self, *args, **kwargs):
-        param = self.request.body.decode("utf-8")
-        data = json.loads(param)
-        vote_form = VoteForm.from_json(data)
-        if vote_form.validate():
-            banners = vote_form.data.pop('banners')
-            vote_form.data['cover'] = banners[0]
-            vote = await objects.create(Vote, **vote_form.data)
-            for banner in banners:
-                await objects.create(VoteBanner, vote_id=vote.id, image=banner)
-            self.finish(json.dumps(model_to_dict(Vote), default=json_serializer))
-        else:
-            ret = {}
-            self.set_status(400)
-            for field in vote_form.errors:
-                ret[field] = vote_form.errors[field][0]
-            self.finish(ret)
 
 
 class CandidateStatusHandler(BaseHandler):
