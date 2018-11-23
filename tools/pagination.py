@@ -32,7 +32,7 @@ class Paginator:
         if self._count:
             return self._count
         with objects.allow_sync():
-            self._count = self.items.count()
+            self._count = self.query.count()
         return self._count
 
     @property
