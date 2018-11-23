@@ -14,7 +14,7 @@ from handlers.votes import (CandidateListHandler,
                             VotingHandler,
                             VoteRoleHandler,
                             VoteEventDetailHandler,
-                            VoteListHandler, CandidateStatusHandler)
+                            VoteListHandler, CandidateStatusHandler, VoteAdminDetailHandler)
 
 urlpatterns = [
     url('/api/v1/tokens/qiniu', QiNiuTokenHandler, name='qiniu_token'),
@@ -35,7 +35,7 @@ urlpatterns = [
     url('/api/v1/weixin/jsapi', WeixinJSAPIHandler, name='weixin_jsapi'),
     url('/api/v1/admin/orders', VoteEventListHandler, name='order-list'),
     url('/api/v1/admin/votes', VoteListHandler, name='vote-list'),
-    url('/api/v1/admin/votes/([0-9]+)', VoteDetailHandler, name='admin-vote-detail'),
+    url('/api/v1/admin/votes/([0-9]+)', VoteAdminDetailHandler, name='admin-vote-detail'),
     url('/api/v1/admin/users', UserListHandler, name='user-list'),
     url('/api/v1/admin/users/([0-9]+)', UserDetailHandler, name='admin-user-detail'),
     url('/api/v1/admin/users/([0-9]+)/status', UserStatusHandler, name='user-status'),

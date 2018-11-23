@@ -17,11 +17,12 @@ class WeixinJSAPIHandler(BaseHandler):
     """
 
     async def post(self, *args, **kwargs):
-        param = self.request.body.decode("utf-8")
+        param = self.request.body.decode("utf-8") or '{}'
         data = json.loads(param)
         url = data.get('url')
         if not url:
-            self.finish({'url': 'url是必填的'})
+            self.set_status(400)
+            self.finish({'err_msg': 'url是必填的', 'err_code': 'required_url'})
         jsapi_ticket = await self.get_jsapi_ticket()
         jsapi = self.jsapi(jsapi_ticket, url)
 
@@ -52,7 +53,7 @@ class WeixinJSAPIHandler(BaseHandler):
             content = resp.body.decode("utf-8")
             content = json.loads(content)
             jsapi_ticket = content['ticket']
-            redis.set('wexin_jsapi_ticket', access_token, 7100)
+            redis.set('wexin_jsapi_ticket', jsapi_ticket, 7100)
         return jsapi_ticket
 
     def sign(self, raw):
@@ -70,7 +71,7 @@ class WeixinJSAPIHandler(BaseHandler):
         timestamp = str(int(time.time()))
         nonce_str = self.nonce_str
         raw = dict(timestamp=timestamp,
-                   nonceStr=nonce_str, jsapi_ticket=ticket, url=url)
+                   noncestr=nonce_str, jsapi_ticket=ticket, url=url)
         sign = self.sign(raw)
         data = dict(timestamp=timestamp, nonceStr=nonce_str, signature=sign, appId=APPID)
 
