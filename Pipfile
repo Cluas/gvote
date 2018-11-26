@@ -13,6 +13,10 @@ wtforms = "*"
 peewee-async = "*"
 wtforms-json = "*"
 bcrypt = "*"
+cryptography = "*"
+peewee = "==3.7.1"
+pip = "==18.0"
+aioredis = "*"
 
 [dev-packages]
 
