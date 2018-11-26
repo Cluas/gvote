@@ -49,6 +49,12 @@ class DuplicateError(APIException):
     default_code = 'duplicate_error'
 
 
+class WexinError(APIException):
+    status_code = 400
+    default_detail = '微信错误'
+    default_code = 'weixin_error'
+
+
 class DisableVoting(APIException):
     status_code = 400
     default_detail = '您已经被禁止投票'
