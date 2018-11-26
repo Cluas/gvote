@@ -16,8 +16,9 @@ def make_app(debug=False):
     return tornado.web.Application(urlpatterns, debug=debug, **settings)
 
 
-define("port", default=9090, help="server listen port")
+define("port", default=9090, help="server listen port", type=int)
 define("settings", default="develop", help="server settings file")
+options.parse_command_line()
 
 
 def serve():
